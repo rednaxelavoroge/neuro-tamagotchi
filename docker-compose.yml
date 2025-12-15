@@ -1,0 +1,124 @@
+version: "3.8"
+
+services:
+  # ============================================================================
+  # PostgreSQL Database
+  # ============================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: neuro_tamagotchi_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-neuro_tamagotchi}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-neuro_tamagotchi}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - neuro_network
+
+  # ============================================================================
+  # Redis Cache
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: neuro_tamagotchi_redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - neuro_network
+
+  # ============================================================================
+  # Backend API (Development)
+  # Uncomment to run backend in container
+  # ============================================================================
+  # backend:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile
+  #   container_name: neuro_tamagotchi_api
+  #   restart: unless-stopped
+  #   environment:
+  #     - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-neuro_tamagotchi}
+  #     - REDIS_URL=redis://redis:6379/0
+  #     - DEBUG=true
+  #     - APP_ENV=development
+  #   env_file:
+  #     - ./backend/.env
+  #   ports:
+  #     - "8000:8000"
+  #   volumes:
+  #     - ./backend:/app
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   networks:
+  #     - neuro_network
+
+  # ============================================================================
+  # Frontend (Development)
+  # Uncomment to run frontend in container
+  # ============================================================================
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #   container_name: neuro_tamagotchi_web
+  #   restart: unless-stopped
+  #   environment:
+  #     - NEXT_PUBLIC_API_URL=http://backend:8000
+  #   ports:
+  #     - "3000:3000"
+  #   volumes:
+  #     - ./frontend:/app
+  #     - /app/node_modules
+  #     - /app/.next
+  #   depends_on:
+  #     - backend
+  #   networks:
+  #     - neuro_network
+
+# ============================================================================
+# Volumes
+# ============================================================================
+volumes:
+  postgres_data:
+    driver: local
+    name: neuro_tamagotchi_postgres_data
+  redis_data:
+    driver: local
+    name: neuro_tamagotchi_redis_data
+
+# ============================================================================
+# Networks
+# ============================================================================
+networks:
+  neuro_network:
+    driver: bridge
+    name: neuro_tamagotchi_network
